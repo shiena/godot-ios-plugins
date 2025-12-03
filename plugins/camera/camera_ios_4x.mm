@@ -73,7 +73,19 @@
 		width[1] = 0;
 		height[1] = 0;
 
+		// prepare our device
+		[p_device lockForConfiguration:&error];
+
+		[p_device setFocusMode:AVCaptureFocusModeLocked];
+		[p_device setExposureMode:AVCaptureExposureModeLocked];
+		[p_device setWhiteBalanceMode:AVCaptureWhiteBalanceModeLocked];
+
+		[p_device unlockForConfiguration];
+
 		[self beginConfiguration];
+
+		// setup our capture
+		self.sessionPreset = AVCaptureSessionPreset1280x720;
 
 		input = [AVCaptureDeviceInput deviceInputWithDevice:p_device error:&error];
 		if (!input) {
@@ -475,6 +487,40 @@ void CameraIOS::handle_display_rotation_change(int p_orientation) {
 #endif
 
 CameraIOS::CameraIOS() {
+	// check if we have our usage description
+	NSString *usage_desc = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"NSCameraUsageDescription"];
+	if (usage_desc == nullptr) {
+		// don't initialise if we don't get anything
+		print_line("No NSCameraUsageDescription key in pList, no access to cameras.");
+		return;
+	} else if (usage_desc.length == 0) {
+		// don't initialise if we don't get anything
+		print_line("Empty NSCameraUsageDescription key in pList, no access to cameras.");
+		return;
+	}
+
+#if VERSION_MINOR < 5
+	// now we'll request access.
+	// If this is the first time the user will be prompted with the string (iOS will read it).
+	// Once a decision is made it is returned. If the user wants to change it later on they
+	// need to go into setting.
+	print_line("Requesting Camera permissions");
+
+	[AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo
+								 completionHandler:^(BOOL granted) {
+									 if (granted) {
+										 print_line("Access to cameras granted!");
+
+										 // Find available cameras we have at this time
+										 update_feeds();
+
+										 // should only have one of these....
+										 device_notifications = [[MyDeviceNotifications alloc] initForServer:this];
+									 } else {
+										 print_line("No access to cameras!");
+									 }
+								 }];
+#endif
 }
 
 CameraIOS::~CameraIOS() {
