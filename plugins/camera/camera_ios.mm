@@ -28,6 +28,10 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
+#include "core/version.h"
+
+#if VERSION_MAJOR == 3
+
 ///@TODO this is a near duplicate of CameraMacOS, we should find a way to combine those to minimize code duplication!!!!
 // If you fix something here, make sure you fix it there as wel!
 
@@ -465,3 +469,5 @@ CameraIOS::CameraIOS() {
 CameraIOS::~CameraIOS() {
 	device_notifications = nil;
 };
+
+#endif // VERSION_MAJOR != 4
