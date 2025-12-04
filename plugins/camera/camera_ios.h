@@ -32,20 +32,35 @@
 #define CAMERAIOS_H
 
 #include "core/version.h"
-#if VERSION_MAJOR == 4 && VERSION_MINOR >= 6
+
+#if VERSION_MAJOR == 4 && VERSION_MINOR >= 5
 #include "servers/camera/camera_server.h"
 #else
 #include "servers/camera_server.h"
 #endif
 
 class CameraIOS : public CameraServer {
+#if VERSION_MAJOR == 4
+	GDSOFTCLASS(CameraIOS, CameraServer);
 
 private:
+	int current_orientation = 0;
+#endif
+
 public:
 	CameraIOS();
 	~CameraIOS();
 
 	void update_feeds();
+
+#if VERSION_MAJOR == 4
+#if VERSION_MINOR >= 5
+	void set_monitoring_feeds(bool p_monitoring_feeds) override;
+#endif
+#if VERSION_MINOR >= 6
+	void handle_display_rotation_change(int p_orientation) override;
+#endif
+#endif
 };
 
 #endif /* CAMERAIOS_H */
