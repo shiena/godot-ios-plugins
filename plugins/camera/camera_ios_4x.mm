@@ -407,6 +407,25 @@ bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 	return true;
 }
 
+static String GetFormatName(FourCharCode fourcc) {
+	switch (fourcc) {
+		case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
+			return "YCbCr_420_Full";
+		case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
+			return "YCbCr_420_Video";
+		case kCVPixelFormatType_32BGRA:
+			return "BGRA_8888";
+		case kCVPixelFormatType_32RGBA:
+			return "RGBA_8888";
+		default:
+			// Return FourCC string for unknown formats.
+			return String::chr((char)(fourcc >> 24) & 0xFF) +
+					String::chr((char)(fourcc >> 16) & 0xFF) +
+					String::chr((char)(fourcc >> 8) & 0xFF) +
+					String::chr((char)(fourcc >> 0) & 0xFF);
+	}
+}
+
 Array CameraFeedIOS::get_formats() const {
 	Array result;
 	for (AVCaptureDeviceFormat *format in device.formats) {
@@ -416,11 +435,7 @@ Array CameraFeedIOS::get_formats() const {
 		dictionary["width"] = dimension.width;
 		dictionary["height"] = dimension.height;
 		FourCharCode fourcc = CMFormatDescriptionGetMediaSubType(formatDescription);
-		dictionary["format"] =
-				String::chr((char)(fourcc >> 24) & 0xFF) +
-				String::chr((char)(fourcc >> 16) & 0xFF) +
-				String::chr((char)(fourcc >> 8) & 0xFF) +
-				String::chr((char)(fourcc >> 0) & 0xFF);
+		dictionary["format"] = GetFormatName(fourcc);
 		result.push_back(dictionary);
 	}
 	return result;
