@@ -235,7 +235,7 @@
 // CameraFeedIOS - Subclass for camera feeds in iOS
 
 class CameraFeedIOS : public CameraFeed {
-#if VERSION_MAJOR == 4 && VERSION_MINOR >= 5
+#if VERSION_MINOR >= 5
 	GDSOFTCLASS(CameraFeedIOS, CameraFeed);
 #endif
 private:
@@ -253,7 +253,7 @@ public:
 
 	void handle_rotation_change(int p_orientation);
 
-#if VERSION_MAJOR == 4 && VERSION_MINOR >= 5
+#if VERSION_MINOR >= 5
 	bool activate_feed() override;
 	void deactivate_feed() override;
 
@@ -329,7 +329,7 @@ bool CameraFeedIOS::activate_feed() {
 	if (capture_session) {
 		// Already recording!
 	} else {
-#if VERSION_MAJOR == 4 && VERSION_MINOR >= 5
+#if VERSION_MINOR >= 5
 		// Configure device format if specified.
 		if (selected_format != -1) {
 			NSError *error;
@@ -370,7 +370,7 @@ void CameraFeedIOS::deactivate_feed() {
 	}
 }
 
-#if VERSION_MAJOR == 4 && VERSION_MINOR >= 5
+#if VERSION_MINOR >= 5
 bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 	if (p_index == -1) {
 		selected_format = p_index;
