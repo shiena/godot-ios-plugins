@@ -38,11 +38,7 @@
 #include "camera_ios.h"
 
 #include "core/math/math_defs.h"
-#if VERSION_MINOR >= 5
 #include "servers/camera/camera_feed.h"
-#else
-#include "servers/camera_server.h"
-#endif
 
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>

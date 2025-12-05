@@ -33,7 +33,7 @@
 
 #include "core/version.h"
 
-#if VERSION_MAJOR == 4 && VERSION_MINOR >= 5
+#if VERSION_MAJOR == 4 && VERSION_MINOR >= 6
 #include "servers/camera/camera_server.h"
 #else
 #include "servers/camera_server.h"
@@ -41,7 +41,11 @@
 
 class CameraIOS : public CameraServer {
 #if VERSION_MAJOR == 4
+#if VERSION_MINOR >= 5
 	GDSOFTCLASS(CameraIOS, CameraServer);
+#else
+	GDCLASS(CameraIOS, CameraServer);
+#endif
 
 private:
 	int current_orientation = 0;
