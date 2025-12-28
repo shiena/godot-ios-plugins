@@ -86,26 +86,29 @@
 		input = [AVCaptureDeviceInput deviceInputWithDevice:p_device error:&error];
 		if (!input) {
 			print_line("Couldn't get input device for camera");
-		} else {
-			[self addInput:input];
+			[self commitConfiguration];
+			return nil;
 		}
+		[self addInput:input];
 
 		output = [AVCaptureVideoDataOutput new];
 		if (!output) {
 			print_line("Couldn't get output device for camera");
-		} else {
-			NSDictionary *settings = @{ (NSString *)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) };
-			output.videoSettings = settings;
-
-			// discard if the data output queue is blocked (as we process the still image)
-			[output setAlwaysDiscardsLateVideoFrames:YES];
-
-			// now set ourselves as the delegate to receive new frames.
-			[output setSampleBufferDelegate:self queue:dispatch_get_main_queue()];
-
-			// this takes ownership
-			[self addOutput:output];
+			[self commitConfiguration];
+			return nil;
 		}
+
+		NSDictionary *settings = @{ (NSString *)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) };
+		output.videoSettings = settings;
+
+		// discard if the data output queue is blocked (as we process the still image)
+		[output setAlwaysDiscardsLateVideoFrames:YES];
+
+		// now set ourselves as the delegate to receive new frames.
+		[output setSampleBufferDelegate:self queue:dispatch_get_main_queue()];
+
+		// this takes ownership
+		[self addOutput:output];
 
 		[self commitConfiguration];
 
