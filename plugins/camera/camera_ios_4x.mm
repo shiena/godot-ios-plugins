@@ -328,35 +328,45 @@ void CameraFeedIOS::handle_rotation_change(int p_orientation) {
 
 bool CameraFeedIOS::activate_feed() {
 	if (capture_session) {
-		// Already recording!
-	} else {
-#if VERSION_MINOR >= 5
-		// Configure device format if specified.
-		if (selected_format != -1) {
-			NSError *error;
-			if (!device_locked) {
-				device_locked = [device lockForConfiguration:&error];
-				ERR_FAIL_COND_V_MSG(!device_locked, false, error.localizedFailureReason.UTF8String);
-			}
-			[device setActiveFormat:device.formats[selected_format]];
-		}
-#endif
-		// Start camera capture, check permission.
-		AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
-		if (status == AVAuthorizationStatusAuthorized) {
-			capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device];
-		} else if (status == AVAuthorizationStatusNotDetermined) {
-			// Request permission.
-			[AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo
-									 completionHandler:^(BOOL granted) {
-										 if (granted) {
-											 capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device];
-										 }
-									 }];
-		}
-	};
+		// Already recording.
+		return true;
+	}
 
-	return true;
+#if VERSION_MINOR >= 5
+	// Configure device format if specified.
+	if (selected_format != -1) {
+		NSError *error;
+		if (!device_locked) {
+			device_locked = [device lockForConfiguration:&error];
+			ERR_FAIL_COND_V_MSG(!device_locked, false, error.localizedFailureReason.UTF8String);
+		}
+		[device setActiveFormat:device.formats[selected_format]];
+	}
+#endif
+
+	// Start camera capture, check permission.
+	AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+	if (status == AVAuthorizationStatusAuthorized) {
+		capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device];
+		return capture_session != nullptr;
+	} else if (status == AVAuthorizationStatusNotDetermined) {
+		// Request permission asynchronously.
+		[AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo
+								 completionHandler:^(BOOL granted) {
+									 if (granted) {
+										 capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device];
+									 }
+								 }];
+		return false;
+	} else if (status == AVAuthorizationStatusDenied) {
+		print_line("Camera permission denied by user.");
+		return false;
+	} else if (status == AVAuthorizationStatusRestricted) {
+		print_line("Camera access restricted.");
+		return false;
+	}
+
+	return false;
 }
 
 void CameraFeedIOS::deactivate_feed() {
