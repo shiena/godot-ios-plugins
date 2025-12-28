@@ -243,6 +243,7 @@ private:
 	AVCaptureDevice *device;
 	MyCaptureSession *capture_session;
 	bool device_locked;
+	bool was_active_before_pause = false;
 	int current_orientation = 1; // UIInterfaceOrientation value (1 = Portrait)
 
 public:
@@ -253,6 +254,8 @@ public:
 	void set_device(AVCaptureDevice *p_device);
 
 	void handle_rotation_change(int p_orientation);
+	void handle_pause();
+	void handle_resume();
 
 #if VERSION_MINOR >= 5
 	bool activate_feed() override;
@@ -324,6 +327,22 @@ void CameraFeedIOS::handle_rotation_change(int p_orientation) {
 
 	transform = Transform2D();
 	transform = transform.rotated(Math::deg_to_rad(image_rotation));
+}
+
+void CameraFeedIOS::handle_pause() {
+	if (capture_session) {
+		was_active_before_pause = true;
+		deactivate_feed();
+	} else {
+		was_active_before_pause = false;
+	}
+}
+
+void CameraFeedIOS::handle_resume() {
+	if (was_active_before_pause) {
+		activate_feed();
+		was_active_before_pause = false;
+	}
 }
 
 bool CameraFeedIOS::activate_feed() {
@@ -594,6 +613,24 @@ void CameraIOS::handle_display_rotation_change(int p_orientation) {
 		Ref<CameraFeedIOS> feed = (Ref<CameraFeedIOS>)feeds[i];
 		if (feed.is_valid()) {
 			feed->handle_rotation_change(p_orientation);
+		}
+	}
+}
+
+void CameraIOS::handle_application_pause() {
+	for (int i = 0; i < feeds.size(); i++) {
+		Ref<CameraFeedIOS> feed = (Ref<CameraFeedIOS>)feeds[i];
+		if (feed.is_valid()) {
+			feed->handle_pause();
+		}
+	}
+}
+
+void CameraIOS::handle_application_resume() {
+	for (int i = 0; i < feeds.size(); i++) {
+		Ref<CameraFeedIOS> feed = (Ref<CameraFeedIOS>)feeds[i];
+		if (feed.is_valid()) {
+			feed->handle_resume();
 		}
 	}
 }

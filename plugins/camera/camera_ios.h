@@ -63,6 +63,8 @@ public:
 #endif
 #if VERSION_MINOR >= 6
 	void handle_display_rotation_change(int p_orientation) override;
+	void handle_application_pause() override;
+	void handle_application_resume() override;
 #endif
 #endif
 };
