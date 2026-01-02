@@ -207,7 +207,7 @@ typedef PoolVector<uint8_t> GodotUInt8Vector;
 				img_data[1].resize(2 * new_width * new_height);
 			}
 
-			///TODO GLES2 doesn't support FORMAT_RG8, need to do some form of conversion
+			/// TODO GLES2 doesn't support FORMAT_RG8, need to do some form of conversion
 #if VERSION_MAJOR == 4
 			uint8_t *w = img_data[1].ptrw();
 			memcpy(w, dataCbCr, 2 * new_width * new_height);
@@ -247,7 +247,7 @@ typedef PoolVector<uint8_t> GodotUInt8Vector;
 			} break;
 		}
 
-		//TODO: this is correct for the camera on the back, I have a feeling this needs to be inversed for the camera on the front!
+		// TODO: this is correct for the camera on the back, I have a feeling this needs to be inversed for the camera on the front!
 		feed->set_transform(display_transform);
 	}
 
@@ -288,13 +288,13 @@ public:
 
 AVCaptureDevice *CameraFeedIOS::get_device() const {
 	return device;
-};
+}
 
 CameraFeedIOS::CameraFeedIOS() {
 	capture_session = NULL;
 	device = NULL;
 	transform = Transform2D(1.0, 0.0, 0.0, 1.0, 0.0, 0.0); /* should re-orientate this based on device orientation */
-};
+}
 
 void CameraFeedIOS::set_device(AVCaptureDevice *p_device) {
 	device = p_device;
@@ -308,7 +308,7 @@ void CameraFeedIOS::set_device(AVCaptureDevice *p_device) {
 	} else if ([p_device position] == AVCaptureDevicePositionFront) {
 		position = CameraFeed::FEED_FRONT;
 	};
-};
+}
 
 CameraFeedIOS::~CameraFeedIOS() {
 	if (capture_session) {
@@ -318,7 +318,7 @@ CameraFeedIOS::~CameraFeedIOS() {
 	if (device) {
 		device = nil;
 	}
-};
+}
 
 bool CameraFeedIOS::activate_feed() {
 	if (capture_session) {
@@ -329,7 +329,7 @@ bool CameraFeedIOS::activate_feed() {
 	};
 
 	return true;
-};
+}
 
 void CameraFeedIOS::deactivate_feed() {
 	// end camera capture if we have one
@@ -337,7 +337,7 @@ void CameraFeedIOS::deactivate_feed() {
 		[capture_session cleanup];
 		capture_session = nil;
 	}
-};
+}
 
 //////////////////////////////////////////////////////////////////////////
 // MyDeviceNotifications - This is a little helper class gets notifications
@@ -437,7 +437,7 @@ void CameraIOS::update_feeds() {
 			add_feed(newfeed);
 		}
 	}
-};
+}
 
 CameraIOS::CameraIOS() {
 	// check if we have our usage description
@@ -472,10 +472,10 @@ CameraIOS::CameraIOS() {
 									 print_line("No access to cameras!");
 								 }
 							 }];
-};
+}
 
 CameraIOS::~CameraIOS() {
 	device_notifications = nil;
-};
+}
 
 #endif // VERSION_MAJOR != 4
