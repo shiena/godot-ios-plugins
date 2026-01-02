@@ -216,7 +216,7 @@
 				}
 			}
 
-			///TODO OpenGL doesn't support FORMAT_RG8, need to do some form of conversion
+			/// TODO OpenGL doesn't support FORMAT_RG8, need to do some form of conversion
 			img[1].instantiate();
 			img[1]->set_data(new_width, new_height, 0, Image::FORMAT_RG8, img_data[1]);
 		}
@@ -456,9 +456,9 @@ static String GetFormatName(FourCharCode fourcc) {
 		default:
 			// Return FourCC string for unknown formats.
 			return String::chr((char)(fourcc >> 24) & 0xFF) +
-					String::chr((char)(fourcc >> 16) & 0xFF) +
-					String::chr((char)(fourcc >> 8) & 0xFF) +
-					String::chr((char)(fourcc >> 0) & 0xFF);
+				   String::chr((char)(fourcc >> 16) & 0xFF) +
+				   String::chr((char)(fourcc >> 8) & 0xFF) +
+				   String::chr((char)(fourcc >> 0) & 0xFF);
 	}
 }
 
@@ -669,19 +669,19 @@ CameraIOS::CameraIOS() {
 	print_line("Requesting Camera permissions");
 
 	[AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo
-								 completionHandler:^(BOOL granted) {
-									 if (granted) {
-										 print_line("Access to cameras granted!");
+							 completionHandler:^(BOOL granted) {
+								 if (granted) {
+									 print_line("Access to cameras granted!");
 
-										 // Find available cameras we have at this time
-										 update_feeds();
+									 // Find available cameras we have at this time
+									 update_feeds();
 
-										 // should only have one of these....
-										 device_notifications = [[MyDeviceNotifications alloc] initForServer:this];
-									 } else {
-										 print_line("No access to cameras!");
-									 }
-								 }];
+									 // should only have one of these....
+									 device_notifications = [[MyDeviceNotifications alloc] initForServer:this];
+								 } else {
+									 print_line("No access to cameras!");
+								 }
+							 }];
 #endif
 }
 
