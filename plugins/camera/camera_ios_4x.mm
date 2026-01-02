@@ -253,6 +253,7 @@ public:
 	AVCaptureDevice *get_device() const;
 
 	CameraFeedIOS();
+	~CameraFeedIOS();
 
 	void set_device(AVCaptureDevice *p_device);
 
@@ -280,6 +281,12 @@ CameraFeedIOS::CameraFeedIOS() {
 	device = nullptr;
 	capture_session = nullptr;
 	device_locked = false;
+}
+
+CameraFeedIOS::~CameraFeedIOS() {
+	if (is_active()) {
+		deactivate_feed();
+	}
 }
 
 void CameraFeedIOS::set_device(AVCaptureDevice *p_device) {
@@ -531,7 +538,7 @@ void CameraIOS::update_feeds() {
 
 	NSArray<AVCaptureDevice *> *devices = session.devices;
 
-	// remove devices that are gone..
+	// Deactivate feeds that are gone before removing them.
 	for (int i = feeds.size() - 1; i >= 0; i--) {
 		Ref<CameraFeedIOS> feed = (Ref<CameraFeedIOS>)feeds[i];
 		if (feed.is_null()) {
@@ -539,7 +546,9 @@ void CameraIOS::update_feeds() {
 		}
 
 		if (![devices containsObject:feed->get_device()]) {
-			// remove it from our array, this will also destroy it ;)
+			if (feed->is_active()) {
+				feed->deactivate_feed();
+			}
 			remove_feed(feed);
 		};
 	};
