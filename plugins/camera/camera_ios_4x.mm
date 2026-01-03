@@ -71,16 +71,16 @@
 
 		// prepare our device
 		if ([p_device lockForConfiguration:&error]) {
-			// Check if the device supports each mode before setting.
-			// Front cameras often don't support focus locking.
-			if ([p_device isFocusModeSupported:AVCaptureFocusModeLocked]) {
-				[p_device setFocusMode:AVCaptureFocusModeLocked];
+			// Set default modes to continuous auto for natural camera behavior.
+			// Users can override these via set_format() parameters.
+			if ([p_device isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus]) {
+				[p_device setFocusMode:AVCaptureFocusModeContinuousAutoFocus];
 			}
-			if ([p_device isExposureModeSupported:AVCaptureExposureModeLocked]) {
-				[p_device setExposureMode:AVCaptureExposureModeLocked];
+			if ([p_device isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]) {
+				[p_device setExposureMode:AVCaptureExposureModeContinuousAutoExposure];
 			}
-			if ([p_device isWhiteBalanceModeSupported:AVCaptureWhiteBalanceModeLocked]) {
-				[p_device setWhiteBalanceMode:AVCaptureWhiteBalanceModeLocked];
+			if ([p_device isWhiteBalanceModeSupported:AVCaptureWhiteBalanceModeContinuousAutoWhiteBalance]) {
+				[p_device setWhiteBalanceMode:AVCaptureWhiteBalanceModeContinuousAutoWhiteBalance];
 			}
 
 			[p_device unlockForConfiguration];
@@ -306,6 +306,9 @@ private:
 	bool device_locked;
 	bool was_active_before_pause = false;
 	int current_orientation = 1; // UIInterfaceOrientation value (1 = Portrait)
+	Dictionary camera_parameters;
+
+	void apply_camera_parameters();
 
 public:
 	AVCaptureDevice *get_device() const;
@@ -434,6 +437,45 @@ static bool is_supported_format(FourCharCode fourcc) {
 	}
 }
 
+static AVCaptureFocusMode parse_focus_mode(const String &p_mode) {
+	if (p_mode == "locked") {
+		return AVCaptureFocusModeLocked;
+	}
+	if (p_mode == "auto") {
+		return AVCaptureFocusModeAutoFocus;
+	}
+	if (p_mode == "continuous_auto") {
+		return AVCaptureFocusModeContinuousAutoFocus;
+	}
+	return AVCaptureFocusModeContinuousAutoFocus; // Default
+}
+
+static AVCaptureExposureMode parse_exposure_mode(const String &p_mode) {
+	if (p_mode == "locked") {
+		return AVCaptureExposureModeLocked;
+	}
+	if (p_mode == "auto") {
+		return AVCaptureExposureModeAutoExpose;
+	}
+	if (p_mode == "continuous_auto") {
+		return AVCaptureExposureModeContinuousAutoExposure;
+	}
+	return AVCaptureExposureModeContinuousAutoExposure; // Default
+}
+
+static AVCaptureWhiteBalanceMode parse_white_balance_mode(const String &p_mode) {
+	if (p_mode == "locked") {
+		return AVCaptureWhiteBalanceModeLocked;
+	}
+	if (p_mode == "auto") {
+		return AVCaptureWhiteBalanceModeAutoWhiteBalance;
+	}
+	if (p_mode == "continuous_auto") {
+		return AVCaptureWhiteBalanceModeContinuousAutoWhiteBalance;
+	}
+	return AVCaptureWhiteBalanceModeContinuousAutoWhiteBalance; // Default
+}
+
 bool CameraFeedIOS::activate_feed() {
 	ERR_FAIL_NULL_V(device, false);
 	if (capture_session) {
@@ -494,6 +536,9 @@ bool CameraFeedIOS::activate_feed() {
 	AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
 	if (status == AVAuthorizationStatusAuthorized) {
 		capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device withFormat:format_index];
+		if (capture_session) {
+			apply_camera_parameters();
+		}
 		return capture_session != nullptr;
 	} else if (status == AVAuthorizationStatusNotDetermined) {
 		// Request permission asynchronously.
@@ -501,6 +546,9 @@ bool CameraFeedIOS::activate_feed() {
 								 completionHandler:^(BOOL granted) {
 									 if (granted) {
 										 capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device withFormat:format_index];
+										 if (capture_session) {
+											 apply_camera_parameters();
+										 }
 									 }
 								 }];
 		return false;
@@ -513,6 +561,44 @@ bool CameraFeedIOS::activate_feed() {
 	}
 
 	return false;
+}
+
+void CameraFeedIOS::apply_camera_parameters() {
+	if (!device || camera_parameters.is_empty()) {
+		return;
+	}
+
+	NSError *error;
+	if (![device lockForConfiguration:&error]) {
+		ERR_PRINT("Couldn't lock device for parameter configuration");
+		return;
+	}
+
+	// Focus mode
+	if (camera_parameters.has("focus_mode")) {
+		AVCaptureFocusMode mode = parse_focus_mode(camera_parameters["focus_mode"]);
+		if ([device isFocusModeSupported:mode]) {
+			[device setFocusMode:mode];
+		}
+	}
+
+	// Exposure mode
+	if (camera_parameters.has("exposure_mode")) {
+		AVCaptureExposureMode mode = parse_exposure_mode(camera_parameters["exposure_mode"]);
+		if ([device isExposureModeSupported:mode]) {
+			[device setExposureMode:mode];
+		}
+	}
+
+	// White balance mode
+	if (camera_parameters.has("white_balance_mode")) {
+		AVCaptureWhiteBalanceMode mode = parse_white_balance_mode(camera_parameters["white_balance_mode"]);
+		if ([device isWhiteBalanceModeSupported:mode]) {
+			[device setWhiteBalanceMode:mode];
+		}
+	}
+
+	[device unlockForConfiguration];
 }
 
 void CameraFeedIOS::deactivate_feed() {
@@ -530,6 +616,10 @@ void CameraFeedIOS::deactivate_feed() {
 #if VERSION_MINOR >= 5
 bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 	ERR_FAIL_NULL_V(device, false);
+
+	// Save camera parameters for later application.
+	camera_parameters = p_parameters;
+
 	if (p_index == -1) {
 		selected_format = p_index;
 		if (is_active()) {
@@ -542,6 +632,7 @@ bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 		}
 		if (is_active()) {
 			[capture_session commitConfiguration];
+			apply_camera_parameters();
 		}
 		return true;
 	}
@@ -592,6 +683,7 @@ bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 	selected_format = p_index;
 	if (is_active()) {
 		[capture_session commitConfiguration];
+		apply_camera_parameters();
 	}
 	return true;
 }
