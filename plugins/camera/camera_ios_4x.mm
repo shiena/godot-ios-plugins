@@ -70,21 +70,41 @@
 		height[1] = 0;
 
 		// prepare our device
-		[p_device lockForConfiguration:&error];
+		if ([p_device lockForConfiguration:&error]) {
+			// Check if the device supports each mode before setting.
+			// Front cameras often don't support focus locking.
+			if ([p_device isFocusModeSupported:AVCaptureFocusModeLocked]) {
+				[p_device setFocusMode:AVCaptureFocusModeLocked];
+			}
+			if ([p_device isExposureModeSupported:AVCaptureExposureModeLocked]) {
+				[p_device setExposureMode:AVCaptureExposureModeLocked];
+			}
+			if ([p_device isWhiteBalanceModeSupported:AVCaptureWhiteBalanceModeLocked]) {
+				[p_device setWhiteBalanceMode:AVCaptureWhiteBalanceModeLocked];
+			}
 
-		[p_device setFocusMode:AVCaptureFocusModeLocked];
-		[p_device setExposureMode:AVCaptureExposureModeLocked];
-		[p_device setWhiteBalanceMode:AVCaptureWhiteBalanceModeLocked];
-
-		[p_device unlockForConfiguration];
+			[p_device unlockForConfiguration];
+		} else {
+			print_line("Couldn't lock device for configuration");
+		}
 
 		[self beginConfiguration];
 
 		// setup our capture
 		if (p_format != -1) {
-			self.sessionPreset = AVCaptureSessionPresetInputPriority;
+			if ([self canSetSessionPreset:AVCaptureSessionPresetInputPriority]) {
+				self.sessionPreset = AVCaptureSessionPresetInputPriority;
+			} else {
+				print_line("Warning: AVCaptureSessionPresetInputPriority not supported");
+			}
 		} else {
-			self.sessionPreset = AVCaptureSessionPreset1280x720;
+			if ([self canSetSessionPreset:AVCaptureSessionPreset1280x720]) {
+				self.sessionPreset = AVCaptureSessionPreset1280x720;
+			} else if ([self canSetSessionPreset:AVCaptureSessionPresetHigh]) {
+				self.sessionPreset = AVCaptureSessionPresetHigh;
+			} else {
+				print_line("Warning: No suitable session preset found, using device default");
+			}
 		}
 
 		input = [AVCaptureDeviceInput deviceInputWithDevice:p_device error:&error];
@@ -93,15 +113,33 @@
 			[self commitConfiguration];
 			return nil;
 		}
+		if (![self canAddInput:input]) {
+			print_line("Couldn't add input to capture session");
+			input = nullptr;
+			[self commitConfiguration];
+			return nil;
+		}
 		[self addInput:input];
 
 		output = [AVCaptureVideoDataOutput new];
 		if (!output) {
 			print_line("Couldn't get output device for camera");
+			[self removeInput:input];
+			input = nullptr;
+			[self commitConfiguration];
+			return nil;
+		}
+		if (![self canAddOutput:output]) {
+			print_line("Couldn't add output to capture session");
+			[self removeInput:input];
+			input = nullptr;
+			output = nullptr;
 			[self commitConfiguration];
 			return nil;
 		}
 
+		// Force 8-bit YCbCr format. 10-bit formats are not supported
+		// because Godot's Image class only supports 8-bit formats.
 		NSDictionary *settings = @{ (NSString *)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) };
 		output.videoSettings = settings;
 
@@ -160,78 +198,94 @@
 	// need to lock our base address so we can access our pixel buffers, better safe then sorry?
 	CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
 
+	// Check if we have the expected number of planes (Y and CbCr).
+	size_t planeCount = CVPixelBufferGetPlaneCount(pixelBuffer);
+	if (planeCount < 2) {
+		static bool plane_count_error_logged = false;
+		if (!plane_count_error_logged) {
+			ERR_PRINT("Unexpected plane count in pixel buffer (expected 2, got " + itos(planeCount) + ")");
+			plane_count_error_logged = true;
+		}
+		CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+		return;
+	}
+
 	// get our buffers
 	unsigned char *dataY = (unsigned char *)CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0);
 	unsigned char *dataCbCr = (unsigned char *)CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1);
-	if (dataY == nullptr) {
-		print_line("Couldn't access Y pixel buffer data");
-	} else if (dataCbCr == nullptr) {
-		print_line("Couldn't access CbCr pixel buffer data");
-	} else {
-		Ref<Image> img[2];
-
-		{
-			// do Y
-			size_t new_width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0);
-			size_t new_height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0);
-			size_t row_stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0);
-
-			if ((width[0] != new_width) || (height[0] != new_height)) {
-				width[0] = new_width;
-				height[0] = new_height;
-				img_data[0].resize(new_width * new_height);
-			}
-
-			uint8_t *w = img_data[0].ptrw();
-			if (new_width == row_stride) {
-				memcpy(w, dataY, new_width * new_height);
-			} else {
-				for (size_t i = 0; i < new_height; i++) {
-					memcpy(w, dataY, new_width);
-					w += new_width;
-					dataY += row_stride;
-				}
-			}
-
-			img[0].instantiate();
-			img[0]->set_data(new_width, new_height, 0, Image::FORMAT_R8, img_data[0]);
+	if (dataY == nullptr || dataCbCr == nullptr) {
+		static bool buffer_access_error_logged = false;
+		if (!buffer_access_error_logged) {
+			ERR_PRINT("Couldn't access pixel buffer plane data");
+			buffer_access_error_logged = true;
 		}
-
-		{
-			// do CbCr
-			size_t new_width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 1);
-			size_t new_height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 1);
-			size_t row_stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1);
-
-			if ((width[1] != new_width) || (height[1] != new_height)) {
-				width[1] = new_width;
-				height[1] = new_height;
-				img_data[1].resize(2 * new_width * new_height);
-			}
-
-			uint8_t *w = img_data[1].ptrw();
-			if (new_width * 2 == row_stride) {
-				memcpy(w, dataCbCr, 2 * new_width * new_height);
-			} else {
-				for (size_t i = 0; i < new_height; i++) {
-					memcpy(w, dataCbCr, new_width * 2);
-					w += new_width * 2;
-					dataCbCr += row_stride;
-				}
-			}
-
-			/// TODO OpenGL doesn't support FORMAT_RG8, need to do some form of conversion
-			img[1].instantiate();
-			img[1]->set_data(new_width, new_height, 0, Image::FORMAT_RG8, img_data[1]);
-		}
-
-		// set our texture...
-#if VERSION_MINOR >= 4
-		feed->set_ycbcr_images(img[0], img[1]);
-#else
-		feed->set_YCbCr_imgs(img[0], img[1]);
-#endif
+		CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+		return;
 	}
+
+	Ref<Image> img[2];
+
+	{
+		// do Y
+		size_t new_width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0);
+		size_t new_height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0);
+		size_t row_stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0);
+
+		if ((width[0] != new_width) || (height[0] != new_height)) {
+			width[0] = new_width;
+			height[0] = new_height;
+			img_data[0].resize(new_width * new_height);
+		}
+
+		uint8_t *w = img_data[0].ptrw();
+		if (new_width == row_stride) {
+			memcpy(w, dataY, new_width * new_height);
+		} else {
+			for (size_t i = 0; i < new_height; i++) {
+				memcpy(w, dataY, new_width);
+				w += new_width;
+				dataY += row_stride;
+			}
+		}
+
+		img[0].instantiate();
+		img[0]->set_data(new_width, new_height, 0, Image::FORMAT_R8, img_data[0]);
+	}
+
+	{
+		// do CbCr
+		size_t new_width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 1);
+		size_t new_height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 1);
+		size_t row_stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1);
+
+		if ((width[1] != new_width) || (height[1] != new_height)) {
+			width[1] = new_width;
+			height[1] = new_height;
+			img_data[1].resize(2 * new_width * new_height);
+		}
+
+		uint8_t *w = img_data[1].ptrw();
+		if (new_width * 2 == row_stride) {
+			memcpy(w, dataCbCr, 2 * new_width * new_height);
+		} else {
+			for (size_t i = 0; i < new_height; i++) {
+				memcpy(w, dataCbCr, new_width * 2);
+				w += new_width * 2;
+				dataCbCr += row_stride;
+			}
+		}
+
+		/// TODO OpenGL doesn't support FORMAT_RG8, need to do some form of conversion
+		img[1].instantiate();
+		img[1]->set_data(new_width, new_height, 0, Image::FORMAT_RG8, img_data[1]);
+	}
+
+	// set our texture...
+#if VERSION_MINOR >= 4
+	feed->set_ycbcr_images(img[0], img[1]);
+#else
+	feed->set_YCbCr_imgs(img[0], img[1]);
+#endif
 
 	// and unlock
 	CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
@@ -294,6 +348,7 @@ CameraFeedIOS::~CameraFeedIOS() {
 }
 
 void CameraFeedIOS::set_device(AVCaptureDevice *p_device) {
+	ERR_FAIL_NULL(p_device);
 	device = p_device;
 
 #if VERSION_MINOR >= 5
@@ -364,7 +419,23 @@ void CameraFeedIOS::handle_resume() {
 	}
 }
 
+static bool is_supported_format(FourCharCode fourcc) {
+	switch (fourcc) {
+		// Only 8-bit YCbCr formats are supported.
+		// 10-bit and compressed formats are excluded because
+		// Godot's Image class only supports 8-bit formats.
+		case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
+		case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
+		case kCVPixelFormatType_422YpCbCr8BiPlanarFullRange:
+		case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange:
+			return true;
+		default:
+			return false;
+	}
+}
+
 bool CameraFeedIOS::activate_feed() {
+	ERR_FAIL_NULL_V(device, false);
 	if (capture_session) {
 		// Already recording.
 		return true;
@@ -372,13 +443,45 @@ bool CameraFeedIOS::activate_feed() {
 
 #if VERSION_MINOR >= 5
 	// Configure device format if specified.
+	// selected_format is a filtered index (matching get_formats()), so we need to
+	// iterate through formats to find the matching one.
 	if (selected_format != -1) {
-		NSError *error;
-		if (!device_locked) {
-			device_locked = [device lockForConfiguration:&error];
-			ERR_FAIL_COND_V_MSG(!device_locked, false, error.localizedFailureReason.UTF8String);
+		int current_index = 0;
+		AVCaptureDeviceFormat *target_format = nil;
+
+		for (AVCaptureDeviceFormat *format in device.formats) {
+			CMFormatDescriptionRef formatDescription = format.formatDescription;
+			FourCharCode fourcc = CMFormatDescriptionGetMediaSubType(formatDescription);
+
+			// Skip unsupported formats to match get_formats() indexing.
+			if (!is_supported_format(fourcc)) {
+				continue;
+			}
+
+			for (AVFrameRateRange *range in format.videoSupportedFrameRateRanges) {
+				(void)range; // Unused, only counting indices.
+				if (current_index == selected_format) {
+					target_format = format;
+					break;
+				}
+				current_index++;
+			}
+			if (target_format) {
+				break;
+			}
 		}
-		[device setActiveFormat:device.formats[selected_format]];
+
+		if (target_format) {
+			NSError *error;
+			if (!device_locked) {
+				device_locked = [device lockForConfiguration:&error];
+				ERR_FAIL_COND_V_MSG(!device_locked, false, error.localizedFailureReason.UTF8String);
+			}
+			[device setActiveFormat:target_format];
+		} else {
+			ERR_PRINT("Failed to find format for selected_format index, using device default");
+			selected_format = -1;
+		}
 	}
 #endif
 
@@ -426,6 +529,7 @@ void CameraFeedIOS::deactivate_feed() {
 
 #if VERSION_MINOR >= 5
 bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
+	ERR_FAIL_NULL_V(device, false);
 	if (p_index == -1) {
 		selected_format = p_index;
 		if (is_active()) {
@@ -450,6 +554,14 @@ bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 	AVFrameRateRange *target_range = nil;
 
 	for (AVCaptureDeviceFormat *format in device.formats) {
+		CMFormatDescriptionRef formatDescription = format.formatDescription;
+		FourCharCode fourcc = CMFormatDescriptionGetMediaSubType(formatDescription);
+
+		// Skip unsupported formats to match get_formats() indexing.
+		if (!is_supported_format(fourcc)) {
+			continue;
+		}
+
 		for (AVFrameRateRange *range in format.videoSupportedFrameRateRanges) {
 			if (current_index == p_index) {
 				target_format = format;
@@ -491,39 +603,11 @@ static String GetFormatName(FourCharCode fourcc) {
 			return "YCbCr_420_Full";
 		case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
 			return "YCbCr_420_Video";
-		// 10-bit YCbCr 4:2:0
-		case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange:
-			return "YCbCr_420_10bit_Full";
-		case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
-			return "YCbCr_420_10bit_Video";
 		// 8-bit YCbCr 4:2:2
 		case kCVPixelFormatType_422YpCbCr8BiPlanarFullRange:
 			return "YCbCr_422_Full";
 		case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange:
 			return "YCbCr_422_Video";
-		// 10-bit YCbCr 4:2:2
-		case kCVPixelFormatType_422YpCbCr10BiPlanarFullRange:
-			return "YCbCr_422_10bit_Full";
-		case kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange:
-			return "YCbCr_422_10bit_Video";
-		// Lossless compressed (Apple ProRes)
-		case kCVPixelFormatType_Lossless_420YpCbCr8BiPlanarFullRange:
-			return "YCbCr_420_Full_Lossless";
-		case kCVPixelFormatType_Lossless_420YpCbCr8BiPlanarVideoRange:
-			return "YCbCr_420_Video_Lossless";
-		case kCVPixelFormatType_Lossless_420YpCbCr10PackedBiPlanarVideoRange:
-			return "YCbCr_420_10bit_Video_Lossless";
-		case kCVPixelFormatType_Lossless_422YpCbCr10PackedBiPlanarVideoRange:
-			return "YCbCr_422_10bit_Video_Lossless";
-		// Lossy compressed
-		case kCVPixelFormatType_Lossy_420YpCbCr8BiPlanarFullRange:
-			return "YCbCr_420_Full_Lossy";
-		case kCVPixelFormatType_Lossy_420YpCbCr8BiPlanarVideoRange:
-			return "YCbCr_420_Video_Lossy";
-		case kCVPixelFormatType_Lossy_420YpCbCr10PackedBiPlanarVideoRange:
-			return "YCbCr_420_10bit_Video_Lossy";
-		case kCVPixelFormatType_Lossy_422YpCbCr10PackedBiPlanarVideoRange:
-			return "YCbCr_422_10bit_Video_Lossy";
 		// RGB/BGRA
 		case kCVPixelFormatType_32BGRA:
 			return "BGRA_8888";
@@ -539,11 +623,18 @@ static String GetFormatName(FourCharCode fourcc) {
 }
 
 Array CameraFeedIOS::get_formats() const {
+	ERR_FAIL_NULL_V(device, Array());
 	Array result;
 	for (AVCaptureDeviceFormat *format in device.formats) {
 		CMFormatDescriptionRef formatDescription = format.formatDescription;
-		CMVideoDimensions dimension = CMVideoFormatDescriptionGetDimensions(formatDescription);
 		FourCharCode fourcc = CMFormatDescriptionGetMediaSubType(formatDescription);
+
+		// Skip unsupported formats (10-bit, compressed, etc.)
+		if (!is_supported_format(fourcc)) {
+			continue;
+		}
+
+		CMVideoDimensions dimension = CMVideoFormatDescriptionGetDimensions(formatDescription);
 		String format_name = GetFormatName(fourcc);
 
 		// Add an entry for each supported frame rate range.
@@ -665,7 +756,11 @@ void CameraIOS::update_feeds() {
 	// Update rotation for all feeds.
 	UIInterfaceOrientation orientation = UIInterfaceOrientationUnknown;
 	if (@available(iOS 13, *)) {
-		orientation = [UIApplication sharedApplication].delegate.window.windowScene.interfaceOrientation;
+		UIWindow *window = [UIApplication sharedApplication].delegate.window;
+		UIWindowScene *windowScene = window.windowScene;
+		if (windowScene) {
+			orientation = windowScene.interfaceOrientation;
+		}
 	} else {
 		orientation = [[UIApplication sharedApplication] statusBarOrientation];
 	}
