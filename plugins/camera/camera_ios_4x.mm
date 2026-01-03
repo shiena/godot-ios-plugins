@@ -60,7 +60,7 @@
 
 @implementation MyCaptureSession
 
-- (id)initForFeed:(Ref<CameraFeed>)p_feed andDevice:(AVCaptureDevice *)p_device {
+- (id)initForFeed:(Ref<CameraFeed>)p_feed andDevice:(AVCaptureDevice *)p_device withFormat:(int)p_format {
 	if (self = [super init]) {
 		NSError *error;
 		feed = p_feed;
@@ -81,7 +81,11 @@
 		[self beginConfiguration];
 
 		// setup our capture
-		self.sessionPreset = AVCaptureSessionPreset1280x720;
+		if (p_format != -1) {
+			self.sessionPreset = AVCaptureSessionPresetInputPriority;
+		} else {
+			self.sessionPreset = AVCaptureSessionPreset1280x720;
+		}
 
 		input = [AVCaptureDeviceInput deviceInputWithDevice:p_device error:&error];
 		if (!input) {
@@ -374,16 +378,21 @@ bool CameraFeedIOS::activate_feed() {
 #endif
 
 	// Start camera capture, check permission.
+#if VERSION_MINOR >= 5
+	int format_index = selected_format;
+#else
+	int format_index = -1;
+#endif
 	AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
 	if (status == AVAuthorizationStatusAuthorized) {
-		capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device];
+		capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device withFormat:format_index];
 		return capture_session != nullptr;
 	} else if (status == AVAuthorizationStatusNotDetermined) {
 		// Request permission asynchronously.
 		[AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo
 								 completionHandler:^(BOOL granted) {
 									 if (granted) {
-										 capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device];
+										 capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device withFormat:format_index];
 									 }
 								 }];
 		return false;
@@ -416,6 +425,7 @@ bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 		selected_format = p_index;
 		if (is_active()) {
 			[capture_session beginConfiguration];
+			capture_session.sessionPreset = AVCaptureSessionPreset1280x720;
 		}
 		if (device_locked) {
 			[device unlockForConfiguration];
@@ -434,6 +444,7 @@ bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 			ERR_FAIL_COND_V_MSG(!device_locked, false, error.localizedFailureReason.UTF8String);
 		}
 		[capture_session beginConfiguration];
+		capture_session.sessionPreset = AVCaptureSessionPresetInputPriority;
 		[device setActiveFormat:device.formats[p_index]];
 	}
 	selected_format = p_index;
