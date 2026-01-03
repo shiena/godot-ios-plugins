@@ -296,6 +296,11 @@ CameraFeedIOS::~CameraFeedIOS() {
 void CameraFeedIOS::set_device(AVCaptureDevice *p_device) {
 	device = p_device;
 
+#if VERSION_MINOR >= 5
+	// Reset format selection when switching devices.
+	selected_format = -1;
+#endif
+
 	// get some info
 	NSString *device_name = p_device.localizedName;
 	name = String::utf8(device_name.UTF8String);
@@ -436,7 +441,30 @@ bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 		}
 		return true;
 	}
-	ERR_FAIL_INDEX_V((unsigned int)p_index, device.formats.count, false);
+
+	// Find the device format and frame rate range corresponding to p_index.
+	// get_formats() returns one entry per frame rate range, so we need to
+	// iterate through all formats and their frame rate ranges to find the match.
+	int current_index = 0;
+	AVCaptureDeviceFormat *target_format = nil;
+	AVFrameRateRange *target_range = nil;
+
+	for (AVCaptureDeviceFormat *format in device.formats) {
+		for (AVFrameRateRange *range in format.videoSupportedFrameRateRanges) {
+			if (current_index == p_index) {
+				target_format = format;
+				target_range = range;
+				break;
+			}
+			current_index++;
+		}
+		if (target_format) {
+			break;
+		}
+	}
+
+	ERR_FAIL_NULL_V_MSG(target_format, false, "Invalid format index");
+
 	if (is_active()) {
 		if (!device_locked) {
 			NSError *error;
@@ -445,7 +473,9 @@ bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 		}
 		[capture_session beginConfiguration];
 		capture_session.sessionPreset = AVCaptureSessionPresetInputPriority;
-		[device setActiveFormat:device.formats[p_index]];
+		[device setActiveFormat:target_format];
+		[device setActiveVideoMinFrameDuration:target_range.minFrameDuration];
+		[device setActiveVideoMaxFrameDuration:target_range.minFrameDuration];
 	}
 	selected_format = p_index;
 	if (is_active()) {
@@ -456,10 +486,45 @@ bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 
 static String GetFormatName(FourCharCode fourcc) {
 	switch (fourcc) {
+		// 8-bit YCbCr 4:2:0
 		case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
 			return "YCbCr_420_Full";
 		case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
 			return "YCbCr_420_Video";
+		// 10-bit YCbCr 4:2:0
+		case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange:
+			return "YCbCr_420_10bit_Full";
+		case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
+			return "YCbCr_420_10bit_Video";
+		// 8-bit YCbCr 4:2:2
+		case kCVPixelFormatType_422YpCbCr8BiPlanarFullRange:
+			return "YCbCr_422_Full";
+		case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange:
+			return "YCbCr_422_Video";
+		// 10-bit YCbCr 4:2:2
+		case kCVPixelFormatType_422YpCbCr10BiPlanarFullRange:
+			return "YCbCr_422_10bit_Full";
+		case kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange:
+			return "YCbCr_422_10bit_Video";
+		// Lossless compressed (Apple ProRes)
+		case kCVPixelFormatType_Lossless_420YpCbCr8BiPlanarFullRange:
+			return "YCbCr_420_Full_Lossless";
+		case kCVPixelFormatType_Lossless_420YpCbCr8BiPlanarVideoRange:
+			return "YCbCr_420_Video_Lossless";
+		case kCVPixelFormatType_Lossless_420YpCbCr10PackedBiPlanarVideoRange:
+			return "YCbCr_420_10bit_Video_Lossless";
+		case kCVPixelFormatType_Lossless_422YpCbCr10PackedBiPlanarVideoRange:
+			return "YCbCr_422_10bit_Video_Lossless";
+		// Lossy compressed
+		case kCVPixelFormatType_Lossy_420YpCbCr8BiPlanarFullRange:
+			return "YCbCr_420_Full_Lossy";
+		case kCVPixelFormatType_Lossy_420YpCbCr8BiPlanarVideoRange:
+			return "YCbCr_420_Video_Lossy";
+		case kCVPixelFormatType_Lossy_420YpCbCr10PackedBiPlanarVideoRange:
+			return "YCbCr_420_10bit_Video_Lossy";
+		case kCVPixelFormatType_Lossy_422YpCbCr10PackedBiPlanarVideoRange:
+			return "YCbCr_422_10bit_Video_Lossy";
+		// RGB/BGRA
 		case kCVPixelFormatType_32BGRA:
 			return "BGRA_8888";
 		case kCVPixelFormatType_32RGBA:
@@ -476,14 +541,27 @@ static String GetFormatName(FourCharCode fourcc) {
 Array CameraFeedIOS::get_formats() const {
 	Array result;
 	for (AVCaptureDeviceFormat *format in device.formats) {
-		Dictionary dictionary;
 		CMFormatDescriptionRef formatDescription = format.formatDescription;
 		CMVideoDimensions dimension = CMVideoFormatDescriptionGetDimensions(formatDescription);
-		dictionary["width"] = dimension.width;
-		dictionary["height"] = dimension.height;
 		FourCharCode fourcc = CMFormatDescriptionGetMediaSubType(formatDescription);
-		dictionary["format"] = GetFormatName(fourcc);
-		result.push_back(dictionary);
+		String format_name = GetFormatName(fourcc);
+
+		// Add an entry for each supported frame rate range.
+		for (AVFrameRateRange *range in format.videoSupportedFrameRateRanges) {
+			Dictionary dictionary;
+			dictionary["width"] = dimension.width;
+			dictionary["height"] = dimension.height;
+			dictionary["format"] = format_name;
+
+			// Use minFrameDuration to get the maximum frame rate.
+			// CMTime: value is numerator, timescale is denominator (units per second).
+			// Frame rate = timescale / value.
+			CMTime duration = range.minFrameDuration;
+			dictionary["frame_numerator"] = (int64_t)duration.timescale;
+			dictionary["frame_denominator"] = (int64_t)duration.value;
+
+			result.push_back(dictionary);
+		}
 	}
 	return result;
 }
