@@ -41,11 +41,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
 
-#if VERSION_MAJOR == 4
-typedef Vector<uint8_t> GodotUInt8Vector;
-#else
 typedef PoolVector<uint8_t> GodotUInt8Vector;
-#endif
 
 //////////////////////////////////////////////////////////////////////////
 // MyCaptureSession - This is a little helper class so we can capture our frames
@@ -183,17 +179,10 @@ typedef PoolVector<uint8_t> GodotUInt8Vector;
 				img_data[0].resize(new_width * new_height);
 			}
 
-#if VERSION_MAJOR == 4
-			uint8_t *w = img_data[0].ptrw();
-			memcpy(w, dataY, new_width * new_height);
-			img[0].instantiate();
-			img[0]->set_data(new_width, new_height, 0, Image::FORMAT_R8, img_data[0]);
-#else
 			GodotUInt8Vector::Write w = img_data[0].write();
 			memcpy(w.ptr(), dataY, new_width * new_height);
 			img[0].instance();
 			img[0]->create(new_width, new_height, 0, Image::FORMAT_R8, img_data[0]);
-#endif
 		}
 
 		{
@@ -208,25 +197,14 @@ typedef PoolVector<uint8_t> GodotUInt8Vector;
 			}
 
 			/// TODO GLES2 doesn't support FORMAT_RG8, need to do some form of conversion
-#if VERSION_MAJOR == 4
-			uint8_t *w = img_data[1].ptrw();
-			memcpy(w, dataCbCr, 2 * new_width * new_height);
-			img[1].instantiate();
-			img[1]->set_data(new_width, new_height, 0, Image::FORMAT_RG8, img_data[1]);
-#else
 			GodotUInt8Vector::Write w = img_data[1].write();
 			memcpy(w.ptr(), dataCbCr, 2 * new_width * new_height);
 			img[1].instance();
 			img[1]->create(new_width, new_height, 0, Image::FORMAT_RG8, img_data[1]);
-#endif
 		}
 
 		// set our texture...
-#if VERSION_MAJOR == 4 && VERSION_MINOR >= 4
-		feed->set_ycbcr_images(img[0], img[1]);
-#else
 		feed->set_YCbCr_imgs(img[0], img[1]);
-#endif
 
 		// update our matrix to match the orientation, note, before changing anything
 		// here, be aware that the project orientation settings must match your xcode
@@ -420,11 +398,7 @@ void CameraIOS::update_feeds() {
 
 		if (!found) {
 			Ref<CameraFeedIOS> newfeed;
-#if VERSION_MAJOR == 4
-			newfeed.instantiate();
-#else
 			newfeed.instance();
-#endif
 			newfeed->set_device(device);
 			add_feed(newfeed);
 		}
@@ -470,4 +444,4 @@ CameraIOS::~CameraIOS() {
 	device_notifications = nil;
 }
 
-#endif // VERSION_MAJOR != 4
+#endif // VERSION_MAJOR == 3
