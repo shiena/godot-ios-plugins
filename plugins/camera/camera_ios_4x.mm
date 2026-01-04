@@ -71,16 +71,15 @@
 
 		// prepare our device
 		if ([p_device lockForConfiguration:&error]) {
-			// Check if the device supports each mode before setting.
-			// Front cameras often don't support focus locking.
-			if ([p_device isFocusModeSupported:AVCaptureFocusModeLocked]) {
-				[p_device setFocusMode:AVCaptureFocusModeLocked];
+			// Set default modes to continuous auto for natural camera behavior.
+			if ([p_device isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus]) {
+				[p_device setFocusMode:AVCaptureFocusModeContinuousAutoFocus];
 			}
-			if ([p_device isExposureModeSupported:AVCaptureExposureModeLocked]) {
-				[p_device setExposureMode:AVCaptureExposureModeLocked];
+			if ([p_device isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]) {
+				[p_device setExposureMode:AVCaptureExposureModeContinuousAutoExposure];
 			}
-			if ([p_device isWhiteBalanceModeSupported:AVCaptureWhiteBalanceModeLocked]) {
-				[p_device setWhiteBalanceMode:AVCaptureWhiteBalanceModeLocked];
+			if ([p_device isWhiteBalanceModeSupported:AVCaptureWhiteBalanceModeContinuousAutoWhiteBalance]) {
+				[p_device setWhiteBalanceMode:AVCaptureWhiteBalanceModeContinuousAutoWhiteBalance];
 			}
 
 			[p_device unlockForConfiguration];
