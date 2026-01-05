@@ -137,10 +137,10 @@
 			return nil;
 		}
 
-		// Force 8-bit YCbCr format. 10-bit formats are not supported
-		// because Godot's Image class only supports 8-bit formats.
-		NSDictionary *settings = @{ (NSString *)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) };
-		output.videoSettings = settings;
+		// Use the camera's native pixel format (typically VideoRange YCbCr).
+		// This matches ARKit's output format and Godot's shader expectations.
+		// Note: 10-bit formats are filtered in get_formats(), so only 8-bit
+		// formats will be selected via set_format().
 
 		// discard if the data output queue is blocked (as we process the still image)
 		[output setAlwaysDiscardsLateVideoFrames:YES];
