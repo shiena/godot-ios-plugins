@@ -420,13 +420,16 @@ void CameraFeedIOS::handle_resume() {
 
 static bool is_supported_format(FourCharCode fourcc) {
 	switch (fourcc) {
-		// Only 8-bit YCbCr formats are supported.
+		// 8-bit YCbCr formats.
 		// 10-bit and compressed formats are excluded because
 		// Godot's Image class only supports 8-bit formats.
 		case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
 		case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
 		case kCVPixelFormatType_422YpCbCr8BiPlanarFullRange:
 		case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange:
+		// RGB formats (always full range).
+		case kCVPixelFormatType_32BGRA:
+		case kCVPixelFormatType_32RGBA:
 			return true;
 		default:
 			return false;
@@ -595,7 +598,7 @@ bool CameraFeedIOS::set_format(int p_index, const Dictionary &p_parameters) {
 	return true;
 }
 
-static String GetFormatName(FourCharCode fourcc) {
+static String get_format_name(FourCharCode fourcc) {
 	switch (fourcc) {
 		// 8-bit YCbCr 4:2:0
 		case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
@@ -619,6 +622,19 @@ static String GetFormatName(FourCharCode fourcc) {
 	}
 }
 
+static String get_color_range(FourCharCode fourcc) {
+	switch (fourcc) {
+		case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
+		case kCVPixelFormatType_422YpCbCr8BiPlanarFullRange:
+			return "full";
+		case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
+		case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange:
+			return "video";
+		default:
+			return "";
+	}
+}
+
 Array CameraFeedIOS::get_formats() const {
 	ERR_FAIL_NULL_V(device, Array());
 	Array result;
@@ -632,20 +648,10 @@ Array CameraFeedIOS::get_formats() const {
 		}
 
 		CMVideoDimensions dimension = CMVideoFormatDescriptionGetDimensions(formatDescription);
-		String format_name = GetFormatName(fourcc);
+		String format_name = get_format_name(fourcc);
 
 		// Determine color range from pixel format
-		String color_range;
-		switch (fourcc) {
-			case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
-			case kCVPixelFormatType_422YpCbCr8BiPlanarFullRange:
-				color_range = "full";
-				break;
-			case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
-			case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange:
-				color_range = "video";
-				break;
-		}
+		String color_range = get_color_range(fourcc);
 
 		// Add an entry for each supported frame rate range.
 		for (AVFrameRateRange *range in format.videoSupportedFrameRateRanges) {
@@ -653,7 +659,9 @@ Array CameraFeedIOS::get_formats() const {
 			dictionary["width"] = dimension.width;
 			dictionary["height"] = dimension.height;
 			dictionary["format"] = format_name;
-			dictionary["color_range"] = color_range;
+			if (!color_range.is_empty()) {
+				dictionary["color_range"] = color_range;
+			}
 
 			// Use minFrameDuration to get the maximum frame rate.
 			// CMTime: value is numerator, timescale is denominator (units per second).
