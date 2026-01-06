@@ -599,19 +599,17 @@ static String GetFormatName(FourCharCode fourcc) {
 	switch (fourcc) {
 		// 8-bit YCbCr 4:2:0
 		case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
-			return "YCbCr_420_Full";
 		case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
-			return "YCbCr_420_Video";
+			return "YUV420";
 		// 8-bit YCbCr 4:2:2
 		case kCVPixelFormatType_422YpCbCr8BiPlanarFullRange:
-			return "YCbCr_422_Full";
 		case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange:
-			return "YCbCr_422_Video";
+			return "YUV422";
 		// RGB/BGRA
 		case kCVPixelFormatType_32BGRA:
-			return "BGRA_8888";
+			return "BGRA";
 		case kCVPixelFormatType_32RGBA:
-			return "RGBA_8888";
+			return "RGBA";
 		default:
 			// Return FourCC string for unknown formats.
 			return String::chr((char)(fourcc >> 24) & 0xFF) +
@@ -636,12 +634,26 @@ Array CameraFeedIOS::get_formats() const {
 		CMVideoDimensions dimension = CMVideoFormatDescriptionGetDimensions(formatDescription);
 		String format_name = GetFormatName(fourcc);
 
+		// Determine color range from pixel format
+		String color_range;
+		switch (fourcc) {
+			case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
+			case kCVPixelFormatType_422YpCbCr8BiPlanarFullRange:
+				color_range = "full";
+				break;
+			case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
+			case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange:
+				color_range = "video";
+				break;
+		}
+
 		// Add an entry for each supported frame rate range.
 		for (AVFrameRateRange *range in format.videoSupportedFrameRateRanges) {
 			Dictionary dictionary;
 			dictionary["width"] = dimension.width;
 			dictionary["height"] = dimension.height;
 			dictionary["format"] = format_name;
+			dictionary["color_range"] = color_range;
 
 			// Use minFrameDuration to get the maximum frame rate.
 			// CMTime: value is numerator, timescale is denominator (units per second).
