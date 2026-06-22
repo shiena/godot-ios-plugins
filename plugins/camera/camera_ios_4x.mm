@@ -30,7 +30,7 @@
 
 #include "core/version.h"
 
-#if VERSION_MAJOR == 4
+#if VERSION_MAJOR == 4 && VERSION_MINOR < 7
 
 ///@TODO this is a near duplicate of CameraMacOS, we should find a way to combine those to minimize code duplication!!!!
 // If you fix something here, make sure you fix it there as well!

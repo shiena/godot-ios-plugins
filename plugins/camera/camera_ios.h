@@ -33,6 +33,12 @@
 
 #include "core/version.h"
 
+#if VERSION_MAJOR == 4 && VERSION_MINOR >= 7
+
+#warning "The camera plugin was merged into Godot core in 4.7; this build is empty for Godot 4.7 or newer."
+
+#else
+
 #if VERSION_MAJOR == 4 && VERSION_MINOR >= 6
 #include "servers/camera/camera_server.h"
 #else
@@ -68,5 +74,7 @@ public:
 #endif
 #endif
 };
+
+#endif // VERSION_MAJOR == 4 && VERSION_MINOR >= 7
 
 #endif /* CAMERAIOS_H */
